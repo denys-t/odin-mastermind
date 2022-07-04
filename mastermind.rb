@@ -24,7 +24,7 @@
     ################# CODE-BREAKER #################
 
     def game_codebreaker
-      @color_scheme = @num_colors.times.map {COLORS.sample}
+      @color_scheme = @num_colors.times.map { COLORS.sample }
       @color_scheme_code = @color_scheme.map { |color| COLORS.index(color) }
 
       puts "Colors to choose from #{COLORS}. Duplicates are allowed."
@@ -57,8 +57,8 @@
       @color_scheme = gets.chomp.split(' ')
       @color_scheme_code = @color_scheme.map { |color| COLORS.index(color) }
 
-      player_selection_code = [0, 0, 1, 1] # choosing the first guess
-      player_selection = player_selection_code.map { |color_code| COLORS[color_code] }
+      player_selection_code = get_new_code(knuth_codes, possible_codes) # choosing the first guess
+      player_selection = player_selection_code.map { |code| COLORS[code] }
 
       @codebreaker_guess = get_feedback(player_selection_code, @color_scheme_code)
 
@@ -69,8 +69,7 @@
         @turns_left -= 1
         puts "===== Turns left: #{@turns_left} ====="
 
-        possible_codes.delete(player_selection_code)
-        prune_list(player_selection_code, knuth_codes)
+        knuth_codes = prune_list(player_selection_code, knuth_codes)
         player_selection_code = get_new_code(knuth_codes, possible_codes)
         player_selection = player_selection_code.map { |color_code| COLORS[color_code] }
         @codebreaker_guess = get_feedback(player_selection_code, @color_scheme_code)
@@ -83,20 +82,26 @@
       @all_codes = []
       (0..COLORS.length ** @num_colors - 1).each do |i|
         code = i.to_s(COLORS.length)
-        @all_codes[i] = (code.length == @num_colors ? code.split('') : code.prepend('0' * (@num_colors - code.length)).split('')).map { |str| str.to_i}
+        @all_codes[i] = (code.length == @num_colors ? code.split('') : code.prepend('0' * (@num_colors - code.length)).split('')).map { |str| str.to_i }
       end
     end
 
     def prune_list(last_guess_code, knuth_codes)
+      result = []
+
       knuth_codes.each do |code|
         retrieved_feedback = get_feedback(code, last_guess_code)
-        knuth_codes.delete(code) if retrieved_feedback != @codebreaker_guess
+
+        result.push(code) if retrieved_feedback == @codebreaker_guess
       end
+
+      result
     end
 
     def get_new_code(knuth_codes, possible_codes)
       guess_codes = minimax(knuth_codes, possible_codes)
       code = get_guess_code_from_list(knuth_codes, guess_codes)
+      possible_codes.delete(code)
       code
     end
 
@@ -109,11 +114,12 @@
         knuth_codes.each do |code_to_crack|
           feedback = get_feedback(code_to_crack, code)
           feedback_str = feedback_to_string(feedback)
-          times_found[feedback_str] += 1 if !feedback_str.to_s.strip.empty?
+          times_found[feedback_str] += 1 unless feedback_str.strip.empty?
         end
 
         maximum = times_found.values.max
-        scores[code] = (maximum.nil? ? 0 : maximum)
+
+        scores[code] = maximum unless maximum.nil?
       end
 
       minimum = scores.values.min
@@ -127,32 +133,40 @@
     end
 
     def feedback_to_string(feedback)
+      return '' if feedback.empty?
+
       feedback.map { |key, value|
         (1..value).map { key }
       }.reduce { |sum, e| sum.concat(e) }.sort.join
     end
 
     def get_guess_code_from_list(knuth_codes, guess_codes)
-      knuth_codes.each do |code|
-        if !guess_codes.find_index(code).nil?
-          return code
-        end
+      knuth_codes.sort.each do |code|
+        return code unless guess_codes.find_index(code).nil?
       end
 
-      return guess_codes[0]
+      return guess_codes.sort[0]
     end
 
     ################# COMMON #################
 
     def get_feedback(player_selection_code, code)
-      feedback = { 'X' => 0, 'O' => 0 }
+      feedback = Hash.new(0)
+      guess_code = Array.new(player_selection_code)
       tested_code = Array.new(code)
 
-      player_selection_code.each_with_index do |color, i|
+      guess_code.each_with_index do |color, i|
         if color == tested_code[i]
           feedback['X'] += 1
           tested_code[i] = 'X'
-        elsif !tested_code.find_index(color).nil?
+          guess_code[i] = 'X'
+        end
+      end
+
+      guess_code.each_with_index do |color, i|
+        next if color == 'X'
+        
+        unless tested_code.find_index(color).nil?
           feedback['O'] += 1
           tested_code[tested_code.find_index(color)] = 'X'
         end
@@ -175,6 +189,8 @@
     end
 
     def show_codebreaker_guess(player_selection)
+      return player_selection.join(' | ') + ' ===> ' if @codebreaker_guess.empty?
+
       player_selection.join(' | ') + 
         ' ===> ' +
         @codebreaker_guess.map { |key, value|
